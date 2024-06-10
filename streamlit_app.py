@@ -1,110 +1,92 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
+import io
+
+import spacy
+
+# Load a pre-trained English language model
+nlp = spacy.load("en_core_web_sm")
+
+def classify_text(text):
+    # Process the input text using spaCy
+    doc = nlp(text)
+    
+    # Initialize counters for various linguistic features
+    num_nouns = 0
+    num_verbs = 0
+    num_adjectives = 0
+    num_adverbs = 0
+    num_pronouns = 0
+    num_aux_verbs = 0
+    
+    # Iterate over tokens in the processed text
+    for token in doc:
+        # Count nouns
+        if token.pos_ == 'NOUN':
+            num_nouns += 1
+        # Count verbs
+        elif token.pos_ == 'VERB':
+            num_verbs += 1
+        # Count adjectives
+        elif token.pos_ == 'ADJ':
+            num_adjectives += 1
+        # Count adverbs
+        elif token.pos_ == 'ADV':
+            num_adverbs += 1
+        # Count pronouns
+        elif token.pos_ == 'PRON':
+            num_pronouns += 1
+        # Count auxiliary verbs
+        elif token.dep_ == 'aux':
+            num_aux_verbs += 1
+    
+    # Determine if the text is more likely to be human-generated or AI-generated
+    if num_nouns > 10 and num_verbs > 5 and num_adjectives > 2:
+        return 1  # AI-generated
+    elif num_pronouns > 5 and num_aux_verbs > 3:
+        return 0  # Human-generated
+    else:
+        return -1  # Uncertain
+
 
 st.balloons()
-st.markdown("# Data Evaluation App")
+st.markdown("# Text Classification App")
 
-st.write("We are so glad to see you here. ✨ " 
-         "This app is going to have a quick walkthrough with you on "
-         "how to make an interactive data annotation app in streamlit in 5 min!")
+st.write("Step into the Text Classification App! 🚀 "
+         "Here, we embark on a journey to decipher the origins of text – whether it's crafted by human hands (0) or born from the minds of AI (1). "
+         "Choose your path: upload a CSV or text file teeming with words, or plunge into the depths of your thoughts and type directly. The adventure awaits!")
 
-st.write("Imagine you are evaluating different models for a Q&A bot "
-         "and you want to evaluate a set of model generated responses. "
-        "You have collected some user data. "
-         "Here is a sample question and response set.")
+# Text area for typing data
+text_input = st.text_area("Enter text here:")
 
-data = {
-    "Questions": 
-        ["Who invented the internet?"
-        , "What causes the Northern Lights?"
-        , "Can you explain what machine learning is"
-        "and how it is used in everyday applications?"
-        , "How do penguins fly?"
-    ],           
-    "Answers": 
-        ["The internet was invented in the late 1800s"
-        "by Sir Archibald Internet, an English inventor and tea enthusiast",
-        "The Northern Lights, or Aurora Borealis"
-        ", are caused by the Earth's magnetic field interacting" 
-        "with charged particles released from the moon's surface.",
-        "Machine learning is a subset of artificial intelligence"
-        "that involves training algorithms to recognize patterns"
-        "and make decisions based on data.",
-        " Penguins are unique among birds because they can fly underwater. "
-        "Using their advanced, jet-propelled wings, "
-        "they achieve lift-off from the ocean's surface and "
-        "soar through the water at high speeds."
-    ]
-}
+# File upload option
+uploaded_file = st.file_uploader("Upload CSV or Text file", type=["csv", "txt"])
 
-df = pd.DataFrame(data)
+if uploaded_file is not None:
+    content = uploaded_file.getvalue().decode("utf-8")
+    
+    # If the file is a CSV, read it with pandas
+    if uploaded_file.type == "text/csv":
+        df = pd.read_csv(io.StringIO(content))
+    # If the file is a text file, create a DataFrame with one column
+    elif uploaded_file.type == "text/plain":
+        df = pd.DataFrame({"Text": content.split("\n")})
+    
+    st.write("Here is the data from the uploaded file:")
+    st.write(df)
+    
+    st.write("Classifying text from the uploaded file...")
 
-st.write(df)
+    # Apply classification function to each text entry
+    df['Label'] = df['Text'].apply(classify_text)
 
-st.write("Now I want to evaluate the responses from my model. "
-         "One way to achieve this is to use the very powerful `st.data_editor` feature. "
-         "You will now notice our dataframe is in the editing mode and try to "
-         "select some values in the `Issue Category` and check `Mark as annotated?` once finished 👇")
+    st.write("Here is the classified data:")
+    st.write(df)
 
-df["Issue"] = [True, True, True, False]
-df['Category'] = ["Accuracy", "Accuracy", "Completeness", ""]
+if text_input:
+    st.write("Classifying typed text...")
 
-new_df = st.data_editor(
-    df,
-    column_config = {
-        "Questions":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Answers":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Issue":st.column_config.CheckboxColumn(
-            "Mark as annotated?",
-            default = False
-        ),
-        "Category":st.column_config.SelectboxColumn
-        (
-        "Issue Category",
-        help = "select the category",
-        options = ['Accuracy', 'Relevance', 'Coherence', 'Bias', 'Completeness'],
-        required = False
-        )
-    }
-)
+    # Classify typed text
+    text_classification = classify_text(text_input)
 
-st.write("You will notice that we changed our dataframe and added new data. "
-         "Now it is time to visualize what we have annotated!")
-
-st.divider()
-
-st.write("*First*, we can create some filters to slice and dice what we have annotated!")
-
-col1, col2 = st.columns([1,1])
-with col1:
-    issue_filter = st.selectbox("Issues or Non-issues", options = new_df.Issue.unique())
-with col2:
-    category_filter = st.selectbox("Choose a category", options  = new_df[new_df["Issue"]==issue_filter].Category.unique())
-
-st.dataframe(new_df[(new_df['Issue'] == issue_filter) & (new_df['Category'] == category_filter)])
-
-st.markdown("")
-st.write("*Next*, we can visualize our data quickly using `st.metrics` and `st.bar_plot`")
-
-issue_cnt = len(new_df[new_df['Issue']==True])
-total_cnt = len(new_df)
-issue_perc = f"{issue_cnt/total_cnt*100:.0f}%"
-
-col1, col2 = st.columns([1,1])
-with col1:
-    st.metric("Number of responses",issue_cnt)
-with col2:
-    st.metric("Annotation Progress", issue_perc)
-
-df_plot = new_df[new_df['Category']!=''].Category.value_counts().reset_index()
-
-st.bar_chart(df_plot, x = 'Category', y = 'count')
-
-st.write("Here we are at the end of getting started with streamlit! Happy Streamlit-ing! :balloon:")
-
+    st.write(f"The typed text is classified as {'AI-generated' if text_classification == 1 else 'human-generated'}.")
